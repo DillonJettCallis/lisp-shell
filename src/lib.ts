@@ -55,6 +55,7 @@ export function initCoreLib(cwd: string): Scope {
       return cwd;
     },
     Array: initArrayLib(),
+    Parse: initParseLib(),
     def: macroFun((args, scope, interpreter, loc) => {
       assertLengthExact('def', 2, loc, args);
       
@@ -190,27 +191,6 @@ export function initCoreLib(cwd: string): Scope {
     echo: fun(args => {
       console.log(...args);
     }),
-    range: fun((args, loc) => {
-      assertLengthExact('range', 2, loc, args);
-
-      const [start, end] = args;
-
-      if (typeof start !== 'number') {
-        return loc.fail('range function expects two numbers')
-      }
-
-      if (typeof end !== 'number') {
-        return loc.fail('range function expects two numbers')
-      }
-
-      function *gen() {
-        for (let i = start; i < end; i++) {
-          yield i;
-        }
-      }
-
-      return gen();
-    }),
     do: fun(args => args[args.length - 1]),
     toArray: fun((args, loc) => {
       assertLengthExact('toArray', 1, loc, args);
@@ -264,57 +244,6 @@ export function initCoreLib(cwd: string): Scope {
 
       return args[0] == null;
     }),
-    'parseWords': fun((args, loc) => {
-      // (parseArray 'a string of words') -> ['a' 'string' 'of' words']
-      assertLengthExact('parseWords', 1, loc, args);
-      const raw = args[0];
-
-      assertString(loc, raw);
-
-      return raw.split(/\s+/);
-    }),
-    'parseLines': fun((args, loc) => {
-      assertLengthExact('parseWords', 1, loc, args);
-      const raw = args[0];
-
-      assertString(loc, raw);
-
-      return raw.split(/\n/);
-    }),
-    'parseTable': fun((args, loc) => {
-      // (parseTable [name age] 'Dave 26\nSara 32\nBrian 45')
-      // -> [{name: 'Dave', age: 26}, {name: 'nSara', age: 32}, {name: 'nBrian', age: 45}]
-
-      // (parseTable "|" [name age] 'Dave|26\nSara|32\nBrian|45')
-      // -> [{name: 'Dave', age: 26}, {name: 'nSara', age: 32}, {name: 'nBrian', age: 45}]
-
-      assertLengthRange('parseTable', 2, 3, loc, args);
-      const delimiter = args.length === 3 ? args.shift() : /\s+/;
-      const [rawKeys, raw] = args;
-
-      assertStringOrRegex(loc, delimiter);
-      assertIterable(loc, rawKeys);
-      assertString(loc, raw);
-
-      const keys = Array.from(rawKeys);
-
-      return raw.split(/\n/).map(it => it.trim()).filter(it => it).map(it => {
-        const values = it.split(delimiter);
-        const result = new Map();
-        keys.forEach((key, index) => {
-          result.set(key, values[index]);
-        });
-        return result;
-      })
-    }),
-    'parseJson': fun((args, loc) => {
-      assertLengthExact('parseJson', 1, loc, args);
-      const raw = args[0];
-
-      assertString(loc, raw);
-
-      return JSON.parse(raw);
-    }),
     'get': fun((args, loc) => {
       assertLengthMin('get', 2, loc, args);
 
@@ -354,8 +283,29 @@ export function initCoreLib(cwd: string): Scope {
 function initArrayLib() {
   return {
     from: fun(args => args),
+    range: fun((args, loc) => {
+      assertLengthExact('Array.range', 2, loc, args);
+
+      const [start, end] = args;
+
+      if (typeof start !== 'number') {
+        return loc.fail('range function expects two numbers')
+      }
+
+      if (typeof end !== 'number') {
+        return loc.fail('range function expects two numbers')
+      }
+
+      function *gen() {
+        for (let i = start; i < end; i++) {
+          yield i;
+        }
+      }
+
+      return gen();
+    }),
     map: fun((args, loc) => {
-      assertLengthExact('map', 2, loc, args);
+      assertLengthExact('Array.map', 2, loc, args);
 
       const [arr, func] = args;
 
@@ -365,7 +315,7 @@ function initArrayLib() {
       return toArray(arr).map(func);
     }),
     flatMap: fun((args, loc) => {
-      assertLengthExact('flatMap', 2, loc, args);
+      assertLengthExact('Array.flatMap', 2, loc, args);
 
       const [arr, func] = args;
 
@@ -381,7 +331,7 @@ function initArrayLib() {
       return toArray(doFlatMap());
     }),
     'filter': fun((args, loc) => {
-      assertLengthExact('filter', 2, loc, args);
+      assertLengthExact('Array.filter', 2, loc, args);
 
       const [arr, func] = args;
 
@@ -391,7 +341,7 @@ function initArrayLib() {
       return toArray(arr).filter(func);
     }),
     'fold': fun((args, loc) => {
-      assertLengthExact('fold', 3, loc, args);
+      assertLengthExact('Array.fold', 3, loc, args);
 
       const [arr, init, func] = args;
 
@@ -407,7 +357,7 @@ function initArrayLib() {
       return prev;
     }),
     'head': fun((args, loc) => {
-      assertLengthExact('head', 1, loc, args);
+      assertLengthExact('Array.head', 1, loc, args);
 
       const arr = args[0];
 
@@ -416,7 +366,7 @@ function initArrayLib() {
       return arr[Symbol.iterator]().next();
     }),
     'tail': fun((args, loc) => {
-      assertLengthExact('tail', 1, loc, args);
+      assertLengthExact('Array.tail', 1, loc, args);
 
       const arr = args[0];
 
@@ -429,7 +379,7 @@ function initArrayLib() {
       return Array.from({[Symbol.iterator]: () => iter });
     }),
     'init': fun((args, loc) => {
-      assertLengthExact('init', 1, loc, args);
+      assertLengthExact('Array.init', 1, loc, args);
 
       const arr = args[0];
 
@@ -440,7 +390,7 @@ function initArrayLib() {
       return result;
     }),
     'last': fun((args, loc) => {
-      assertLengthExact('last', 1, loc, args);
+      assertLengthExact('Array.last', 1, loc, args);
 
       const arr = args[0];
 
@@ -455,7 +405,7 @@ function initArrayLib() {
       return last;
     }),
     'take': fun((args, loc) => {
-      assertLengthExact('take', 2, loc, args);
+      assertLengthExact('Array.take', 2, loc, args);
 
       const [arr, size] = args;
 
@@ -476,7 +426,7 @@ function initArrayLib() {
       return result;
     }),
     'drop': fun((args, loc) => {
-      assertLengthExact('drop', 2, loc, args);
+      assertLengthExact('Array.drop', 2, loc, args);
 
       const [arr, size] = args;
 
@@ -493,6 +443,62 @@ function initArrayLib() {
       }
 
       return result;
+    }),
+  }
+}
+
+function initParseLib() {
+  return {
+    words: fun((args, loc) => {
+      // (parseArray 'a string of words') -> ['a' 'string' 'of' words']
+      assertLengthExact('Parse.words', 1, loc, args);
+      const raw = args[0];
+
+      assertString(loc, raw);
+
+      return raw.split(/\s+/);
+    }),
+    lines: fun((args, loc) => {
+      assertLengthExact('Parse.lines', 1, loc, args);
+      const raw = args[0];
+
+      assertString(loc, raw);
+
+      return raw.split(/\n/);
+    }),
+    table: fun((args, loc) => {
+      // (parseTable [name age] 'Dave 26\nSara 32\nBrian 45')
+      // -> [{name: 'Dave', age: 26}, {name: 'nSara', age: 32}, {name: 'nBrian', age: 45}]
+
+      // (parseTable "|" [name age] 'Dave|26\nSara|32\nBrian|45')
+      // -> [{name: 'Dave', age: 26}, {name: 'nSara', age: 32}, {name: 'nBrian', age: 45}]
+
+      assertLengthRange('Parse.table', 2, 3, loc, args);
+      const delimiter = args.length === 3 ? args.shift() : /\s+/;
+      const [rawKeys, raw] = args;
+
+      assertStringOrRegex(loc, delimiter);
+      assertIterable(loc, rawKeys);
+      assertString(loc, raw);
+
+      const keys = Array.from(rawKeys);
+
+      return raw.split(/\n/).map(it => it.trim()).filter(it => it).map(it => {
+        const values = it.split(delimiter);
+        const result = new Map();
+        keys.forEach((key, index) => {
+          result.set(key, values[index]);
+        });
+        return result;
+      })
+    }),
+    json: fun((args, loc) => {
+      assertLengthExact('Parse.json', 1, loc, args);
+      const raw = args[0];
+
+      assertString(loc, raw);
+
+      return JSON.parse(raw);
     }),
   }
 }
