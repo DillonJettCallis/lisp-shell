@@ -2,7 +2,7 @@ import { Expression, Location, SExpression, walk } from "./ast";
 import { Context, Scope } from "./context";
 import { lex } from "./lexer";
 import { parse } from "./parser";
-import { pipe } from "./optimize";
+import { dotAccess, pipe } from "./optimize";
 
 
 export const functionKind = Symbol('functionKind');
@@ -23,6 +23,7 @@ export class Interpreter {
     const parsed = parse(lexed);
 
     walk(pipe, parsed);
+    walk(dotAccess, parsed);
     const loc = new Location(0, 0);
     const walked: SExpression = {kind: 'sExpression', body: [{kind: "variable", name: 'do', loc}, parsed], loc};
 

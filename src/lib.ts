@@ -3,6 +3,15 @@ import { ArrayExpression, Expression, Location, ValueExpression, VariableExpress
 import { FunctionKind, functionKind, Interpreter } from "./interpreter";
 import path from "path";
 import fs from 'fs';
+import {
+  assertFunction,
+  assertIterable,
+  assertKeyword,
+  assertKindArray,
+  assertKindVariable,
+  assertLengthExact, assertLengthMin,
+  assertLengthRange, assertNotEmptyArray, assertNumber, assertString, assertStringOrRegex
+} from "./assertions";
 
 
 function macroFun(func: (args: Expression[], scope: Scope, interpreter: Interpreter, loc: Location) => any): any {
@@ -22,79 +31,6 @@ function userFun(func: (...args: any[]) => any): any {
   return func
 }
 
-function assertLengthExact(func: string, size: number, loc: Location, arr: any[]): void | never {
-  if (arr.length !== size) {
-    return loc.fail(`${func} takes exactly ${size} arguments: found ${arr.length}`)
-  }
-}
-
-function assertLengthRange(func: string, min: number, max: number, loc: Location, arr: any[]): void | never {
-  if (arr.length < min || arr.length > max) {
-    return loc.fail(`${func} takes between ${min} and ${max} arguments: found ${arr.length}`)
-  }
-}
-
-function assertKindVariable(func: string, position: number, ex: Expression): asserts ex is VariableExpression {
-  if (ex.kind !== 'variable') {
-    return ex.loc.fail(`Expected variable definition after ${func} at position ${position}: found: ${ex.kind}`)
-  }
-}
-
-function assertKindArray(func: string, position: number, ex: Expression): asserts ex is ArrayExpression {
-  if (ex.kind !== 'arrayExpression') {
-    return ex.loc.fail(`Expected array definition after ${func} at position ${position}: found: ${ex.kind}`)
-  }
-}
-
-function assertKeyword(expected: string, actual: Expression): asserts actual is ValueExpression {
-  if (actual.kind !== 'value') {
-    return actual.loc.fail(`Expected keyword ${expected}: found ${actual.kind}`)
-  } else {
-    if (actual.value !== expected) {
-      return actual.loc.fail(`Expected keyword ${expected}: found ${actual.value}`)
-    }
-  }
-}
-
-function assertIterable(loc: Location, actual: any): asserts actual is Iterable<any> {
-  if (!actual?.[Symbol.iterator]) {
-    loc.fail('Expected iterable')
-  }
-}
-
-function assertMap(loc: Location, actual: any): asserts actual is Map<any, any> {
-  if (!(actual instanceof Map)) {
-    loc.fail('Expected iterable')
-  }
-}
-
-function assertFunction(loc: Location, actual: any): asserts actual is Function {
-  if (typeof actual !== 'function') {
-    loc.fail('Expected function')
-  }
-}
-
-function assertNumber(loc: Location, actual: any): asserts actual is number {
-  if (typeof actual !== 'number') {
-    loc.fail('Expected number')
-  }
-}
-
-function assertString(loc: Location, actual: any): asserts actual is string {
-  if (typeof actual !== 'string') {
-    loc.fail('Expected string')
-  }
-}
-
-function assertStringOrRegex(loc: Location, actual: any): asserts actual is string | RegExp {
-  if (typeof actual === 'string' || actual instanceof RegExp) {
-    return;
-  }
-
-  loc.fail('Expected string')
-}
-
-
 function makeRegex(loc: Location, actual: any): RegExp {
   if (typeof actual === 'string') {
     return RegExp(actual);
@@ -113,18 +49,12 @@ function toArray(src: Iterable<any>): any[] {
   }
 }
 
-function assertNotEmpty(loc: Location, actual: any[]) {
-  if (actual.length === 0) {
-    loc.fail('Expected non-empty array')
-  }
-}
-
-
 export function initCoreLib(cwd: string): Scope {
   const coreLib: Scope = {
     get cwd(): string {
       return cwd;
     },
+    Array: initArrayLib(),
     def: macroFun((args, scope, interpreter, loc) => {
       assertLengthExact('def', 2, loc, args);
       
@@ -206,7 +136,7 @@ export function initCoreLib(cwd: string): Scope {
       assertLengthExact('let', 2, loc, args);
       const [params, body] = args;
       assertKindArray('let', 1, params);
-      assertNotEmpty(loc, params.body);
+      assertNotEmptyArray(loc, params.body);
 
       const isNested = params.body[0].kind === 'arrayExpression';
       const pairExpressions = isNested ? params.body.map(it => {assertKindArray('let', 1, it); return it.body}) : [params.body];
@@ -291,8 +221,140 @@ export function initCoreLib(cwd: string): Scope {
 
       return toArray(arr);
     }),
-    'Array.from': fun(args => args),
-    'map': fun((args, loc) => {
+    '+': fun((args) => args.reduce((left, right) => left + right)),
+    '-': fun((args) => args.reduce((left, right) => left - right)),
+    '*': fun((args) => args.reduce((left, right) => left * right)),
+    '/': fun((args) => args.reduce((left, right) => left / right)),
+    'modulus': fun((args) => args.reduce((left, right) => left % right)),
+    '^': fun((args) => args.reduce((left, right) => left ** right)),
+    '==': fun((args, loc) => {
+      assertLengthExact('==', 2, loc, args);
+
+      const [left, right] = args;
+
+      return left === right;
+    }),
+    '!=': fun((args, loc) => {
+      assertLengthExact('!=', 2, loc, args);
+
+      const [left, right] = args;
+
+      return left !== right;
+    }),
+    'not': fun((args, loc) => {
+      assertLengthExact('not', 1, loc, args);
+
+      return !args[0];
+    }),
+    'and': macroFun((args, scope, interpreter, loc) => {
+      return args.reduce((left, right) => left && interpreter.interpret(right, scope), true);
+    }),
+    'or': macroFun((args, scope, interpreter, loc) => {
+      return args.reduce((left, right) => left || interpreter.interpret(right, scope), false);
+    }),
+    'xor': macroFun((args, scope, interpreter, loc) => {
+      assertLengthExact('xor', 2, loc, args);
+
+      const [left, right] = args;
+
+      return (!left) !== (!right);
+    }),
+    'nil?': fun((args, loc) => {
+      assertLengthExact('nil?', 1, loc, args);
+
+      return args[0] == null;
+    }),
+    'parseWords': fun((args, loc) => {
+      // (parseArray 'a string of words') -> ['a' 'string' 'of' words']
+      assertLengthExact('parseWords', 1, loc, args);
+      const raw = args[0];
+
+      assertString(loc, raw);
+
+      return raw.split(/\s+/);
+    }),
+    'parseLines': fun((args, loc) => {
+      assertLengthExact('parseWords', 1, loc, args);
+      const raw = args[0];
+
+      assertString(loc, raw);
+
+      return raw.split(/\n/);
+    }),
+    'parseTable': fun((args, loc) => {
+      // (parseTable [name age] 'Dave 26\nSara 32\nBrian 45')
+      // -> [{name: 'Dave', age: 26}, {name: 'nSara', age: 32}, {name: 'nBrian', age: 45}]
+
+      // (parseTable "|" [name age] 'Dave|26\nSara|32\nBrian|45')
+      // -> [{name: 'Dave', age: 26}, {name: 'nSara', age: 32}, {name: 'nBrian', age: 45}]
+
+      assertLengthRange('parseTable', 2, 3, loc, args);
+      const delimiter = args.length === 3 ? args.shift() : /\s+/;
+      const [rawKeys, raw] = args;
+
+      assertStringOrRegex(loc, delimiter);
+      assertIterable(loc, rawKeys);
+      assertString(loc, raw);
+
+      const keys = Array.from(rawKeys);
+
+      return raw.split(/\n/).map(it => it.trim()).filter(it => it).map(it => {
+        const values = it.split(delimiter);
+        const result = new Map();
+        keys.forEach((key, index) => {
+          result.set(key, values[index]);
+        });
+        return result;
+      })
+    }),
+    'parseJson': fun((args, loc) => {
+      assertLengthExact('parseJson', 1, loc, args);
+      const raw = args[0];
+
+      assertString(loc, raw);
+
+      return JSON.parse(raw);
+    }),
+    'get': fun((args, loc) => {
+      assertLengthMin('get', 2, loc, args);
+
+      const [map, ...keys] = args;
+
+      function get(obj: any, key: string) {
+        if (obj == null) {
+          return undefined;
+        } if (obj instanceof Map) {
+          return obj.get(key);
+        } else {
+          return obj[key];
+        }
+      }
+
+      return keys.reduce(get, map);
+    }),
+    'set': fun((args, loc) => {
+      assertLengthExact('set', 3, loc, args);
+
+      const [map, key, value] = args;
+
+      if (map instanceof Map) {
+        return map.set(key, value);
+      } else {
+        map[key] = value;
+        return map;
+      }
+    })
+  };
+
+  coreLib.$coreLib = coreLib;
+
+  return coreLib;
+}
+
+function initArrayLib() {
+  return {
+    from: fun(args => args),
+    map: fun((args, loc) => {
       assertLengthExact('map', 2, loc, args);
 
       const [arr, func] = args;
@@ -302,7 +364,7 @@ export function initCoreLib(cwd: string): Scope {
 
       return toArray(arr).map(func);
     }),
-    'flatMap': fun((args, loc) => {
+    flatMap: fun((args, loc) => {
       assertLengthExact('flatMap', 2, loc, args);
 
       const [arr, func] = args;
@@ -432,123 +494,7 @@ export function initCoreLib(cwd: string): Scope {
 
       return result;
     }),
-    '+': fun((args) => args.reduce((left, right) => left + right)),
-    '-': fun((args) => args.reduce((left, right) => left - right)),
-    '*': fun((args) => args.reduce((left, right) => left * right)),
-    '/': fun((args) => args.reduce((left, right) => left / right)),
-    'modulus': fun((args) => args.reduce((left, right) => left % right)),
-    '^': fun((args) => args.reduce((left, right) => left ** right)),
-    '==': fun((args, loc) => {
-      assertLengthExact('==', 2, loc, args);
-
-      const [left, right] = args;
-
-      return left === right;
-    }),
-    '!=': fun((args, loc) => {
-      assertLengthExact('!=', 2, loc, args);
-
-      const [left, right] = args;
-
-      return left !== right;
-    }),
-    'not': fun((args, loc) => {
-      assertLengthExact('not', 1, loc, args);
-
-      return !args[0];
-    }),
-    'and': macroFun((args, scope, interpreter, loc) => {
-      return args.reduce((left, right) => left && interpreter.interpret(right, scope), true);
-    }),
-    'or': macroFun((args, scope, interpreter, loc) => {
-      return args.reduce((left, right) => left || interpreter.interpret(right, scope), false);
-    }),
-    'xor': macroFun((args, scope, interpreter, loc) => {
-      assertLengthExact('xor', 2, loc, args);
-
-      const [left, right] = args;
-
-      return (!left) !== (!right);
-    }),
-    'nil?': fun((args, loc) => {
-      assertLengthExact('nil?', 1, loc, args);
-
-      return args[0] == null;
-    }),
-    'parseWords': fun((args, loc) => {
-      // (parseArray 'a string of words') -> ['a' 'string' 'of' words']
-      assertLengthExact('parseWords', 1, loc, args);
-      const raw = args[0];
-
-      assertString(loc, raw);
-
-      return raw.split(/\s+/);
-    }),
-    'parseLines': fun((args, loc) => {
-      assertLengthExact('parseWords', 1, loc, args);
-      const raw = args[0];
-
-      assertString(loc, raw);
-
-      return raw.split(/\n/);
-    }),
-    'parseTable': fun((args, loc) => {
-      // (parseTable [name age] 'Dave 26\nSara 32\nBrian 45')
-      // -> [{name: 'Dave', age: 26}, {name: 'nSara', age: 32}, {name: 'nBrian', age: 45}]
-
-      // (parseTable "|" [name age] 'Dave|26\nSara|32\nBrian|45')
-      // -> [{name: 'Dave', age: 26}, {name: 'nSara', age: 32}, {name: 'nBrian', age: 45}]
-
-      assertLengthRange('parseTable', 2, 3, loc, args);
-      const delimiter = args.length === 3 ? args.shift() : /\s+/;
-      const [rawKeys, raw] = args;
-
-      assertStringOrRegex(loc, delimiter);
-      assertIterable(loc, rawKeys);
-      assertString(loc, raw);
-
-      const keys = Array.from(rawKeys);
-
-      return raw.split(/\n/).map(it => it.trim()).filter(it => it).map(it => {
-        const values = it.split(delimiter);
-        const result = new Map();
-        keys.forEach((key, index) => {
-          result.set(key, values[index]);
-        });
-        return result;
-      })
-    }),
-    'parseJson': fun((args, loc) => {
-      assertLengthExact('parseJson', 1, loc, args);
-      const raw = args[0];
-
-      assertString(loc, raw);
-
-      return JSON.parse(raw);
-    }),
-    'get': fun((args, loc) => {
-      assertLengthExact('get', 2, loc, args);
-
-      const [map, key] = args;
-
-      assertMap(loc, map);
-
-      return map.get(key);
-    }),
-    'set': fun((args, loc) => {
-      assertLengthExact('get', 3, loc, args);
-
-      const [map, key, value] = args;
-
-      assertMap(loc, map);
-
-      return map.set(key, value);
-    })
-  };
-
-  coreLib.$coreLib = coreLib;
-
-  return coreLib;
+  }
 }
 
 export function initModuleLib(coreLib: Scope) {
