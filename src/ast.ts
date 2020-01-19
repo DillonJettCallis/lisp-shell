@@ -67,18 +67,24 @@ export interface ValueExpression extends BaseExpression {
   value: any;
 }
 
+export interface CommandExpression extends BaseExpression {
+  kind: 'command';
+  value: string;
+}
+
 export interface VariableExpression extends BaseExpression {
   kind: 'variable';
   name: string;
 }
 
-export type Expression = SExpression | ArrayExpression | MapExpression | ValueExpression | VariableExpression
+export type Expression = SExpression | ArrayExpression | MapExpression | ValueExpression | CommandExpression | VariableExpression
 
 export interface Visitor {
   sExpression?: (ex: SExpression) => void;
   arrayExpression?: (ex: ArrayExpression) => void;
   mapExpression?: (ex: MapExpression) => void;
   value?: (ex: ValueExpression) => void;
+  command?: (ex: CommandExpression) => void;
   variable?: (ex: VariableExpression) => void;
 }
 

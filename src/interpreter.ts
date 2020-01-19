@@ -2,7 +2,7 @@ import { Expression, Location, SExpression, walk } from "./ast";
 import { Context, Scope } from "./context";
 import { lex } from "./lexer";
 import { parse } from "./parser";
-import { dotAccess, pipe } from "./optimize";
+import { dotAccess, makeCommand, pipe } from "./optimize";
 
 
 export const functionKind = Symbol('functionKind');
@@ -22,6 +22,7 @@ export class Interpreter {
     const lexed = lex(raw);
     const parsed = parse(lexed);
 
+    walk(makeCommand, parsed);
     walk(pipe, parsed);
     walk(dotAccess, parsed);
     const loc = new Location(0, 0);
@@ -50,6 +51,7 @@ export class Interpreter {
       }
       case "variable":
         return scope[ex.name];
+      case "command":
       case "value":
         return ex.value;
     }
@@ -77,29 +79,25 @@ export class Interpreter {
 
     const first = ex.body[0];
 
+    if (first.kind === 'command') {
+      // if this is a raw, unquoted string expression, try looking it up like a variable
+      const maybeFunc = scope[first.value];
+
+      if (typeof maybeFunc === 'function') {
+        // if we find a variable and it is a function, great! Call it.
+        return call(maybeFunc);
+      }
+    }
+
+    // otherwise we need to evaluate the argument to decide what to do
     const value = this.interpret(first, scope);
 
     if (typeof value === 'function') {
       // if the interpreted value is a function, great! Call it.
       return call(value);
     } else if (typeof value === 'string') {
-      // otherwise if we got a string we need to decide if the user meant call a function or a program
-      if (first.kind === 'value' && !first.quoted) {
-        // if this is a raw, unquoted string expression, try looking it up like a variable
-        const maybeFunc = scope[value];
-
-        if (typeof maybeFunc === 'function') {
-          // if we find a variable and it is a function, great! Call it.
-          return call(maybeFunc);
-        }
-      }
-
-      // if this was a string one of these is true:
-      //   not a literal
-      //   it was quoted
-      //   we could not find a value
-      //   we did find a value but it wasn't a function
-      // then execute the string as a program
+      // finally. it wasn't a raw unqoted string, and it wasn't an expression that returned a function
+      // so it must be a command
       return exec(value);
     } else {
       return ex.loc.fail('SExpression is not a function or a command')

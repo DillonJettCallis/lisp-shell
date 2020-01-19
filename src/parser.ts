@@ -54,6 +54,10 @@ class Parser {
   parseSExpression(loc: Location): SExpression {
     const body = this.parseBraceExpression(')');
 
+    if (body.length === 0) {
+      loc.fail('Empty s expression');
+    }
+
     return {kind: 'sExpression', body, loc};
   }
 

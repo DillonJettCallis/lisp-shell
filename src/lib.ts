@@ -1,5 +1,5 @@
 import { childScope, Scope } from "./context";
-import { ArrayExpression, Expression, Location, ValueExpression, VariableExpression } from "./ast";
+import { Expression, Location } from "./ast";
 import { FunctionKind, functionKind, Interpreter } from "./interpreter";
 import path from "path";
 import fs from 'fs';
@@ -9,8 +9,13 @@ import {
   assertKeyword,
   assertKindArray,
   assertKindVariable,
-  assertLengthExact, assertLengthMin,
-  assertLengthRange, assertNotEmptyArray, assertNumber, assertString, assertStringOrRegex
+  assertLengthExact,
+  assertLengthMin,
+  assertLengthRange,
+  assertNotEmptyArray,
+  assertNumber,
+  assertString,
+  assertStringOrRegex
 } from "./assertions";
 
 
@@ -46,6 +51,16 @@ function toArray(src: Iterable<any>): any[] {
     return src;
   } else {
     return Array.from(src);
+  }
+}
+
+function safeAccess(obj: any, key: string) {
+  if (obj == null) {
+    return undefined;
+  } else if (obj instanceof Map) {
+    return obj.get(key);
+  } else {
+    return obj[key];
   }
 }
 
@@ -179,8 +194,6 @@ export function initCoreLib(cwd: string): Scope {
       }
 
       cwd = resultPath;
-
-      return resultPath;
     }),
     delete: macroFun((args, scope, interpreter, loc) => {
       for (const argEx of args) {
@@ -244,33 +257,30 @@ export function initCoreLib(cwd: string): Scope {
 
       return args[0] == null;
     }),
-    'get': fun((args, loc) => {
+    get: fun((args, loc) => {
       assertLengthMin('get', 2, loc, args);
 
       const [map, ...keys] = args;
 
-      function get(obj: any, key: string) {
-        if (obj == null) {
-          return undefined;
-        } if (obj instanceof Map) {
-          return obj.get(key);
-        } else {
-          return obj[key];
-        }
-      }
-
-      return keys.reduce(get, map);
+      return keys.reduce(safeAccess, map);
     }),
-    'set': fun((args, loc) => {
-      assertLengthExact('set', 3, loc, args);
+    set: fun((args, loc) => {
+      assertLengthMin('set', 3, loc, args);
 
-      const [map, key, value] = args;
+      const value = args.pop();
+      const map = args.shift();
+      const keys = args;
+      const lastKey = keys.pop();
 
-      if (map instanceof Map) {
-        return map.set(key, value);
+      const lastObj = keys.reduce(safeAccess, map);
+
+      if (lastObj == null) {
+        return undefined;
+      } else if (lastObj instanceof Map) {
+        return lastObj.set(lastKey, value);
       } else {
-        map[key] = value;
-        return map;
+        lastObj[lastKey] = value;
+        return lastObj;
       }
     })
   };

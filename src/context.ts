@@ -1,4 +1,5 @@
 import { Shell } from "./shell";
+import util from 'util';
 // @ts-ignore
 import Vorpal from 'vorpal';
 import { Interpreter } from "./interpreter";
@@ -79,11 +80,11 @@ export class Context {
 
             replScope[id] = result;
 
-            this.log(`$${id}: ${result}`);
+            console.log(`$${id}:`, util.inspect(result, false, 3, true));
           }
 
         } catch (e) {
-          this.log(e.message);
+          console.log(e.message);
         }
 
         this.delimiter(context.coreLib.cwd);
