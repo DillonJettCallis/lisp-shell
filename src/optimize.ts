@@ -1,4 +1,4 @@
-import { Expression, SExpression, Visitor } from "./ast";
+import { Expression, Visitor } from "./ast";
 
 function findLastIndex<T>(src: T[], test: (t: T) => boolean): number {
   for (let i = src.length - 1; i >= 0; i--) {

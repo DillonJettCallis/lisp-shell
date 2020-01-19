@@ -1,10 +1,8 @@
-import { ValueExpression } from "./ast";
 import { Shell } from "./shell";
 // @ts-ignore
 import Vorpal from 'vorpal';
 import { Interpreter } from "./interpreter";
 import { initModuleLib } from "./lib";
-
 
 
 export class Context {

@@ -1,4 +1,4 @@
-import { Expression, SExpression, SymbolToken, Token, Location, ArrayExpression, MapExpression } from "./ast";
+import { ArrayExpression, Expression, Location, MapExpression, SExpression, Token } from "./ast";
 
 class Parser {
 

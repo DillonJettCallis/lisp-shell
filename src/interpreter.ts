@@ -1,6 +1,5 @@
-import { Expression, Location, SExpression, ValueExpression, VariableExpression, walk } from "./ast";
+import { Expression, Location, SExpression, walk } from "./ast";
 import { Context, Scope } from "./context";
-import { type } from "os";
 import { lex } from "./lexer";
 import { parse } from "./parser";
 import { pipe } from "./optimize";

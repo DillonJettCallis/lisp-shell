@@ -1,4 +1,4 @@
-import { childScope, Context, Scope } from "./context";
+import { childScope, Scope } from "./context";
 import { ArrayExpression, Expression, Location, ValueExpression, VariableExpression } from "./ast";
 import { FunctionKind, functionKind, Interpreter } from "./interpreter";
 import path from "path";
