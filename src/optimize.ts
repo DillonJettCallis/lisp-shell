@@ -1,5 +1,5 @@
 import { CommandExpression, Expression, SExpression, ValueExpression, Visitor } from "./ast";
-import { assertLengthExact, assertLengthRange, assertNotEmptyString } from "./assertions";
+import { assertLengthRange, assertNotEmptyString } from "./assertions";
 
 function findLastIndex<T>(src: T[], test: (t: T) => boolean): number {
   for (let i = src.length - 1; i >= 0; i--) {
@@ -33,8 +33,7 @@ export const pipe: Visitor = {
     const left = ex.body.slice(0, maybePipe);
     const right = ex.body.slice(maybePipe + 1);
 
-    const inner: Expression = left.length === 1 ? left[0] : {kind: 'sExpression', body: left, loc};
-    right.push(inner);
+    right.push({kind: 'sExpression', body: left, loc});
     ex.body = right;
   }
 };

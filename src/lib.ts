@@ -466,7 +466,7 @@ function initParseLib() {
 
       assertString(loc, raw);
 
-      return raw.split(/\s+/);
+      return raw.split(/\s+/).filter(it => it);
     }),
     lines: fun((args, loc) => {
       assertLengthExact('Parse.lines', 1, loc, args);
@@ -493,7 +493,7 @@ function initParseLib() {
 
       const keys = Array.from(rawKeys);
 
-      return raw.split(/\n/).map(it => it.trim()).filter(it => it).map(it => {
+      return raw.split(/\n+/).map(it => it.trim()).filter(it => it).map(it => {
         const values = it.split(delimiter);
         const result = new Map();
         keys.forEach((key, index) => {

@@ -1,4 +1,4 @@
-import { Expression, Location, SExpression, walk } from "./ast";
+import { Expression, SExpression, walk } from "./ast";
 import { Context, Scope } from "./context";
 import { lex } from "./lexer";
 import { parse } from "./parser";
@@ -22,13 +22,13 @@ export class Interpreter {
     const lexed = lex(raw);
     const parsed = parse(lexed);
 
-    walk(makeCommand, parsed);
     walk(pipe, parsed);
+    walk(makeCommand, parsed);
     walk(dotAccess, parsed);
-    const loc = new Location(0, 0);
-    const walked: SExpression = {kind: 'sExpression', body: [{kind: "variable", name: 'do', loc}, parsed], loc};
+    // const loc = new Location(0, 0);
+    // const walked: SExpression = {kind: 'sExpression', body: [{kind: "variable", name: 'do', loc}, parsed], loc};
 
-    return this.interpret(walked, scope);
+    return this.interpret(parsed, scope);
   }
 
   interpret(ex: Expression, scope: Scope): any {
@@ -96,7 +96,7 @@ export class Interpreter {
       // if the interpreted value is a function, great! Call it.
       return call(value);
     } else if (typeof value === 'string') {
-      // finally. it wasn't a raw unqoted string, and it wasn't an expression that returned a function
+      // finally. it wasn't a raw unquoted string, and it wasn't an expression that returned a function
       // so it must be a command
       return exec(value);
     } else {

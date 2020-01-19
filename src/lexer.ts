@@ -11,11 +11,11 @@ const escapeMap: { [key: string]: string } = {
   n: '\n',
 };
 
-const literals = {
-  'nil': null,
+const literals = new Map(Object.entries({
+  'null': null,
   'true': true,
   'false': false
-};
+}));
 
 class Lexer {
 
@@ -61,8 +61,8 @@ class Lexer {
     } else {
       const value = this.lexWord(next);
 
-      if (value in literals) {
-        return {kind: 'literal', value, loc};
+      if (literals.has(value)) {
+        return {kind: 'literal', value: literals.get(value), loc};
       } else {
         return {kind: "string", value, quoted: false, loc};
       }

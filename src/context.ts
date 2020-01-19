@@ -80,7 +80,13 @@ export class Context {
 
             replScope[id] = result;
 
-            console.log(`$${id}:`, util.inspect(result, false, 3, true));
+            if (typeof result === 'string') {
+              const extra = result.includes('\n') ? '\n' : '';
+
+              console.log(`$${id}:`, `${extra}${result}`);
+            } else {
+              console.log(`$${id}:`, util.inspect(result, false, 3, true));
+            }
           }
 
         } catch (e) {

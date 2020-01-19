@@ -9,7 +9,7 @@ class Parser {
     this.max = src.length - 1;
   }
 
-  parseAll(): SExpression {
+  parseAll(): Expression {
     const body: Expression[] = [];
 
     while (this.index <= this.max) {
@@ -19,7 +19,8 @@ class Parser {
     if (body.length === 1) {
       const first = body[0];
 
-      if (first.kind === 'sExpression') {
+      // if you have only one unquoted string, it's clearly a command so wrap that sucker in an sExpression.
+      if (!(first.kind === 'value' && !first.quoted && typeof first.value === 'string')) {
         return first;
       }
     }
@@ -45,7 +46,9 @@ class Parser {
     } else if (next.kind === 'number') {
       return { kind: "value", value: next.value, quoted: false, loc: next.loc };
     } else if (next.kind === 'variable') {
-      return { kind: 'variable', name: next.value, loc: next.loc };
+      return {kind: 'variable', name: next.value, loc: next.loc};
+    } else if (next.kind === 'literal') {
+      return {kind: 'value', value: next.value, quoted: false, loc: next.loc};
     } else {
       return next.loc.fail('Unknown token type');
     }
@@ -109,7 +112,7 @@ class Parser {
 }
 
 
-export function parse(src: Array<Token>): SExpression {
+export function parse(src: Array<Token>): Expression {
   const parser = new Parser(src);
   return parser.parseAll();
 }
