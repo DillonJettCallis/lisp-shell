@@ -514,7 +514,7 @@ function initParseLib() {
 }
 
 export function initModuleLib(coreLib: Scope) {
-  const module = Object.setPrototypeOf({}, coreLib);
+  const module = Object.create(coreLib);
   module.$module = module; // sneaky sneaky! Store myself in a field on myself!
   return module;
 }
