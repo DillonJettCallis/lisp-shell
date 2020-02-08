@@ -17,23 +17,22 @@ import {
   assertString,
   assertStringOrRegex
 } from "./assertions";
+import { type } from "os";
 
 
 function macroFun(func: (args: Expression[], scope: Scope, interpreter: Interpreter, loc: Location) => any): any {
   (func as any)[functionKind] = FunctionKind.Macro;
-  return func
+  return func;
 }
 
 function fun(func: (args: any[], loc: Location) => any): any {
   (func as any)[functionKind] = FunctionKind.Lib;
-  return func
-
-
+  return func;
 }
 
 function userFun(func: (...args: any[]) => any): any {
   (func as any)[functionKind] = FunctionKind.User;
-  return func
+  return func;
 }
 
 function makeRegex(loc: Location, actual: any): RegExp {
@@ -70,6 +69,8 @@ export function initCoreLib(cwd: string): Scope {
       return cwd;
     },
     Array: initArrayLib(),
+    IO: initIoLib(),
+    String: initStringLib(),
     Parse: initParseLib(),
     def: macroFun((args, scope, interpreter, loc) => {
       assertLengthExact('def', 2, loc, args);
@@ -262,7 +263,16 @@ export function initCoreLib(cwd: string): Scope {
 
       const [map, ...keys] = args;
 
-      return keys.reduce(safeAccess, map);
+      const result = keys.reduce(safeAccess, map);
+
+      if (typeof result === 'function' && result[functionKind] == null) {
+        keys.pop();
+        const obj = keys.reduce(safeAccess, map);
+
+        return result.bind(obj);
+      }
+
+      return result;
     }),
     set: fun((args, loc) => {
       assertLengthMin('set', 3, loc, args);
@@ -454,13 +464,113 @@ function initArrayLib() {
 
       return result;
     }),
+    grep: fun((args, loc) => {
+      assertLengthExact('Array.grep', 2, loc, args);
+
+      const [arr, pattern] = args;
+
+      assertIterable(loc, arr);
+      const regex = makeRegex(loc, pattern);
+
+      return toArray(arr).filter(item => regex.test(String(item)))
+    }),
+  }
+}
+
+function initIoLib() {
+  return {
+    read: fun((args, loc) => {
+      assertLengthExact('IO.read', 1, loc, args);
+
+      const file = args[0];
+
+      assertString(loc, file);
+
+      return fs.readFileSync(file, { encoding: 'utf-8'})
+    }),
+    readLines: fun((args, loc) => {
+      assertLengthExact('IO.readLines', 1, loc, args);
+
+      const file = args[0];
+
+      assertString(loc, file);
+
+      return fs.readFileSync(file, { encoding: 'utf-8'}).split(/\n/)
+    }),
+    write: fun((args, loc) => {
+      assertLengthExact('IO.write', 2, loc, args);
+
+      const [file, content] = args;
+
+      assertString(loc, file);
+      assertString(loc, content);
+
+      fs.writeFileSync(file, content, {encoding: 'utf-8'});
+    }),
+    append: fun((args, loc) => {
+      assertLengthExact('IO.append', 2, loc, args);
+
+      const [file, content] = args;
+
+      assertString(loc, file);
+      assertString(loc, content);
+
+      fs.appendFile(file, content, {encoding: 'utf-8'}, () => 0);
+    }),
+  }
+}
+
+function initStringLib() {
+  return {
+    trim: fun((args, loc) => {
+      assertLengthExact('String.trim', 1, loc, args);
+
+      const str = args[0];
+
+      assertString(loc, str);
+
+      return str.trim();
+    }),
+    slice: fun((args, loc) => {
+      assertLengthMin('String.slice', 2, loc, args);
+
+      const [str, min, max] = args;
+
+      assertString(loc, str);
+      assertNumber(loc, min);
+      if (max != null) {
+        assertNumber(loc, max);
+      }
+
+      return str.substring(min, max);
+    }),
+    contains: fun((args, loc) => {
+      assertLengthExact('String.contains', 2, loc, args);
+
+      const [str, pattern] = args;
+
+      assertString(loc, str);
+      assertString(loc, pattern);
+
+      return str.includes(pattern);
+    }),
+    matches: fun((args, loc) => {
+      assertLengthExact('String.matches', 2, loc, args);
+
+      const [str, pattern] = args;
+
+      assertString(loc, str);
+      const regex = makeRegex(loc, pattern);
+
+      return regex.test(str);
+    }),
   }
 }
 
 function initParseLib() {
   return {
     words: fun((args, loc) => {
-      // (parseArray 'a string of words') -> ['a' 'string' 'of' words']
+      // (Parse.words 'a string of words') -> ['a' 'string' 'of' words']
       assertLengthExact('Parse.words', 1, loc, args);
       const raw = args[0];
 
@@ -477,15 +587,14 @@ function initParseLib() {
       return raw.split(/\n/);
     }),
     table: fun((args, loc) => {
-      // (parseTable [name age] 'Dave 26\nSara 32\nBrian 45')
+      // (Parse.table 'Dave 26\nSara 32\nBrian 45' [name age])
       // -> [{name: 'Dave', age: 26}, {name: 'nSara', age: 32}, {name: 'nBrian', age: 45}]
 
-      // (parseTable "|" [name age] 'Dave|26\nSara|32\nBrian|45')
+      // (Parse.table 'Dave|26\nSara|32\nBrian|45' [name age] "|")
       // -> [{name: 'Dave', age: 26}, {name: 'nSara', age: 32}, {name: 'nBrian', age: 45}]
 
       assertLengthRange('Parse.table', 2, 3, loc, args);
-      const delimiter = args.length === 3 ? args.shift() : /\s+/;
-      const [rawKeys, raw] = args;
+      const [raw, rawKeys, delimiter = /\s+/] = args;
 
       assertStringOrRegex(loc, delimiter);
       assertIterable(loc, rawKeys);

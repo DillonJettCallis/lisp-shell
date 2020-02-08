@@ -64,6 +64,17 @@ export class Context {
       }
     });
 
+    Object.defineProperty(replScope, 'listDefs', {
+      writable: false,
+      configurable: false,
+      enumerable: false,
+      value(){
+        Object.keys(replScope).filter(it => !it.startsWith('result')) .forEach(id => {
+          vorpal.log(id)
+        });
+      }
+    });
+
     vorpal
       .mode('$')
       .delimiter('$')

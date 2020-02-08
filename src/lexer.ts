@@ -9,6 +9,9 @@ const escapeMap: { [key: string]: string } = {
   t: '\t',
   r: '\r',
   n: '\n',
+  s: ' ',
+  $: '$',
+  '\\': '\\'
 };
 
 const literals = new Map(Object.entries({

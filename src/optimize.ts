@@ -1,4 +1,4 @@
-import { CommandExpression, Expression, SExpression, ValueExpression, Visitor } from "./ast";
+import { CommandExpression, Expression, SExpression, ValueExpression, Visitor, walk } from "./ast";
 import { assertLengthRange, assertNotEmptyString } from "./assertions";
 
 function findLastIndex<T>(src: T[], test: (t: T) => boolean): number {
@@ -21,20 +21,47 @@ export const makeCommand: Visitor = {
   }
 };
 
+const pipes = new Set(['|', '|>', ';']);
+
 export const pipe: Visitor = {
   sExpression(ex) {
-    const maybePipe = findLastIndex(ex.body, it => it.kind === 'value' && !it.quoted && it.value === '|');
+    const maybePipe = findLastIndex(ex.body, it => it.kind === 'value' && !it.quoted && pipes.has(it.value));
 
     if (maybePipe === -1) {
       return;
     }
 
-    const loc = ex.body[maybePipe].loc;
+    const pipeEx = ex.body[maybePipe];
+
+    if (pipeEx.kind !== 'value') {
+      // literally impossible because we already checked this.
+      throw new Error("Impossible!")
+    }
+
+    const loc = pipeEx.loc;
     const left = ex.body.slice(0, maybePipe);
     const right = ex.body.slice(maybePipe + 1);
 
-    right.push({kind: 'sExpression', body: left, loc});
-    ex.body = right;
+    switch (pipeEx.value) {
+      case '|': {
+        const rightFunc = right.shift();
+        right.unshift({kind: 'sExpression', body: left, loc});
+        if (rightFunc != null) {
+          right.unshift(rightFunc);
+        }
+        ex.body = right;
+        break;
+      }
+      case '|>': {
+        right.push({kind: 'sExpression', body: left, loc});
+        ex.body = right;
+        break;
+      }
+      case ';': {
+        ex.body = [{kind: 'command', value: 'do', loc}, {kind: 'sExpression', body: left, loc}, {kind: 'sExpression', body: right, loc} ];
+        break;
+      }
+    }
   }
 };
 
@@ -93,3 +120,37 @@ export const dotAccess: Visitor = {
     }
   }
 };
+
+function flattenDoFunc(ex: SExpression) {
+  const first = ex.body[0];
+
+  if (first != null && first.kind === 'command' && first.value === 'do') {
+    // check body for sub commands and flatten them.
+
+    const flattenedBody = ex.body.slice(1).flatMap(next => {
+      if (next.kind === 'sExpression') {
+        flattenDoFunc(next);
+        const nextCommand = next.body[0];
+
+        if (nextCommand != null && nextCommand.kind === 'command' && nextCommand.value === 'do') {
+          return next.body.slice(1);
+        }
+      }
+
+      return [next];
+    });
+
+    flattenedBody.unshift(first);
+    ex.body = flattenedBody;
+  }
+}
+
+export const flattenDo: Visitor = {
+  sExpression: flattenDoFunc
+};
+
+export const standardVisitors = [pipe, makeCommand, dotAccess, flattenDo];
+
+export function optimize(ex: Expression, visitors: Visitor[] = standardVisitors) {
+  visitors.forEach(visitor => walk(visitor, ex));
+}
