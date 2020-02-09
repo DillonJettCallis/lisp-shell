@@ -18,6 +18,7 @@ import {
   assertStringOrRegex
 } from "./assertions";
 import { type } from "os";
+import { partition } from "./util";
 
 
 function macroFun(func: (args: Expression[], scope: Scope, interpreter: Interpreter, loc: Location) => any): any {
@@ -206,15 +207,6 @@ export function initCoreLib(cwd: string): Scope {
       console.log(...args);
     }),
     do: fun(args => args[args.length - 1]),
-    toArray: fun((args, loc) => {
-      assertLengthExact('toArray', 1, loc, args);
-
-      const arr = args[0];
-
-      assertIterable(loc, arr);
-
-      return toArray(arr);
-    }),
     '+': fun((args) => args.reduce((left, right) => left + right)),
     '-': fun((args) => args.reduce((left, right) => left - right)),
     '*': fun((args) => args.reduce((left, right) => left * right)),
@@ -296,6 +288,7 @@ export function initCoreLib(cwd: string): Scope {
   };
 
   coreLib.$coreLib = coreLib;
+  coreLib.File = initFileLib(coreLib);
 
   return coreLib;
 }
@@ -518,6 +511,110 @@ function initIoLib() {
       fs.appendFile(file, content, {encoding: 'utf-8'}, () => 0);
     }),
   }
+}
+
+function resolvePath(nextPath: string, core: Scope): string {
+  const basePath = core.cwd as string;
+  return path.resolve(basePath, nextPath);
+}
+
+function initFileLib(core: Scope) {
+  return {
+    list: fun((args, loc) => {
+      assertLengthExact('File.list', 1, loc, args);
+
+      const rawPath = args[0];
+
+      assertString(loc, rawPath);
+
+      const resolvedPath = resolvePath(rawPath, core);
+      return fs.readdirSync(resolvedPath).map(it => resolvePath(`${resolvedPath}/${it}`, core));
+    }),
+    listFiles: fun((args, loc) => {
+      assertLengthExact('File.listFiles', 1, loc, args);
+
+      const rawPath = args[0];
+
+      assertString(loc, rawPath);
+
+      const resolvedPath = resolvePath(rawPath, core);
+      return fs.readdirSync(resolvedPath).filter(it => fs.statSync(it).isFile()).map(it => resolvePath(`${resolvedPath}/${it}`, core));
+    }),
+    listDirs: fun((args, loc) => {
+      assertLengthExact('File.listDirs', 1, loc, args);
+
+      const rawPath = args[0];
+
+      assertString(loc, rawPath);
+
+      const resolvedPath = resolvePath(rawPath, core);
+      return fs.readdirSync(resolvedPath).filter(it => fs.statSync(it).isDirectory()).map(it => resolvePath(`${resolvedPath}/${it}`, core));
+    }),
+    walk: fun((args, loc) => {
+      assertLengthExact('File.walk', 1, loc, args);
+
+      const rawPath = args[0];
+
+      assertString(loc, rawPath);
+
+      const resolvedPath = resolvePath(rawPath, core);
+      const result = [resolvedPath];
+      const queue = [resolvedPath];
+
+      while (queue.length > 0) {
+        const next = queue.pop() as string;
+
+        const todo = fs.readdirSync(next).map(it => resolvePath(`${next}/${it}`, core));
+
+        result.push(...todo);
+        queue.push(...todo.filter(it => fs.statSync(it).isDirectory()));
+      }
+
+      return result;
+    }),
+    walkFiles: fun((args, loc) => {
+      assertLengthExact('File.walkFiles', 1, loc, args);
+
+      const rawPath = args[0];
+
+      assertString(loc, rawPath);
+
+      const resolvedPath = resolvePath(rawPath, core);
+      const result: string[] = [];
+      const queue = [resolvedPath];
+
+      while (queue.length > 0) {
+        const next = queue.pop() as string;
+
+        const todo = fs.readdirSync(next).map(it => resolvePath(`${next}/${it}`, core));
+
+        const [dirs, files] = partition(todo, it => fs.statSync(it).isDirectory());
+
+        result.push(...files);
+        queue.push(...dirs);
+      }
+
+      return result;
+    }),
+    isFile: fun((args, loc) => {
+      assertLengthExact('File.isFile', 1, loc, args);
+
+      const rawPath = args[0];
+
+      assertString(loc, rawPath);
+
+      return fs.statSync(resolvePath(rawPath, core)).isFile();
+    }),
+    isDirectory: fun((args, loc) => {
+      assertLengthExact('File.isDirectory', 1, loc, args);
+
+      const rawPath = args[0];
+
+      assertString(loc, rawPath);
+
+      return fs.statSync(resolvePath(rawPath, core)).isDirectory();
+    }),
+  };
 }
 
 function initStringLib() {
