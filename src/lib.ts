@@ -17,7 +17,6 @@ import {
   assertString,
   assertStringOrRegex
 } from "./assertions";
-import { type } from "os";
 import { partition } from "./util";
 
 
@@ -73,31 +72,31 @@ export function initCoreLib(cwd: string): Scope {
     IO: initIoLib(),
     String: initStringLib(),
     Parse: initParseLib(),
-    def: macroFun((args, scope, interpreter, loc) => {
+    def: macroFun(async (args, scope, interpreter, loc) => {
       assertLengthExact('def', 2, loc, args);
       
       const [id, valueEx] = args;
 
       assertKindVariable('def', 1, id);
       
-      scope.$module[id.name] = interpreter.interpret(valueEx, scope);
+      scope.$module[id.name] = await interpreter.interpret(valueEx, scope);
     }),
-    if: macroFun((args, scope, interpreter, loc) => {
+    if: macroFun(async (args, scope, interpreter, loc) => {
       assertLengthRange('if', 2, 3, loc, args);
 
       const [conditionEx, thenEx, elseEx] = args;
 
-      if (interpreter.interpret(conditionEx, scope)) {
-        return interpreter.interpret(thenEx, scope);
+      if (await interpreter.interpret(conditionEx, scope)) {
+        return await interpreter.interpret(thenEx, scope);
       } else {
         if (elseEx) {
-          return interpreter.interpret(elseEx, scope);
+          return await interpreter.interpret(elseEx, scope);
         } else {
           return null;
         }
       }
     }),
-    for: macroFun((args, scope, interpreter, loc) => {
+    for: macroFun(async (args, scope, interpreter, loc) => {
       assertLengthExact('for', 4, loc, args);
       
       const [id, inWord, rangeEx, body] = args;
@@ -105,7 +104,7 @@ export function initCoreLib(cwd: string): Scope {
       assertKindVariable('for', 1, id);
       assertKeyword('in', inWord);
 
-      const range = interpreter.interpret(rangeEx, scope);
+      const range = await interpreter.interpret(rangeEx, scope);
 
       assertIterable(range, rangeEx.loc);
 
@@ -114,7 +113,7 @@ export function initCoreLib(cwd: string): Scope {
       for (const next of range) {
         const innerScope = childScope(scope);
         innerScope[id.name] = next;
-        result.push(interpreter.interpret(body, innerScope));
+        result.push(await interpreter.interpret(body, innerScope));
       }
 
       return result;
@@ -148,7 +147,7 @@ export function initCoreLib(cwd: string): Scope {
 
       return coreLib.def([name, {kind: 'value', value, quoted: false, loc}], scope, interpreter, loc);
     }),
-    let: macroFun((args, scope, interpreter, loc) => {
+    let: macroFun(async (args, scope, interpreter, loc) => {
       // (let [[$x 2] [$y 3]] (+ $x $y))
       // (let [$x 2] (+ $x 1))
       assertLengthExact('let', 2, loc, args);
@@ -161,15 +160,15 @@ export function initCoreLib(cwd: string): Scope {
 
       const innerScope = childScope(scope);
 
-      pairExpressions.forEach(pair => {
+      await Promise.all(pairExpressions.map(async (pair) => {
         assertLengthExact('let', 2, loc, pair);
         const [key, valueEx] = pair;
         assertKindVariable('let', 2, key);
 
-        innerScope[key.name] = interpreter.interpret(valueEx, innerScope);
-      });
+        innerScope[key.name] = await interpreter.interpret(valueEx, innerScope);
+      }));
 
-      return interpreter.interpret(body, innerScope);
+      return await interpreter.interpret(body, innerScope);
     }),
     eval: fun((args, loc) => {
       assertLengthExact('eval', 1, loc, args);
@@ -232,13 +231,25 @@ export function initCoreLib(cwd: string): Scope {
 
       return !args[0];
     }),
-    'and': macroFun((args, scope, interpreter, loc) => {
-      return args.reduce((left, right) => left && interpreter.interpret(right, scope), true);
+    'and': macroFun(async (args, scope, interpreter, loc) => {
+      let result = true;
+
+      for (const next of args) {
+        result = result && await interpreter.interpret(next, scope);
+      }
+
+      return result;
     }),
-    'or': macroFun((args, scope, interpreter, loc) => {
-      return args.reduce((left, right) => left || interpreter.interpret(right, scope), false);
+    'or': macroFun(async (args, scope, interpreter, loc) => {
+      let result = false;
+
+      for (const next of args) {
+        result = result || await interpreter.interpret(next, scope);
+      }
+
+      return result;
     }),
-    'xor': macroFun((args, scope, interpreter, loc) => {
+    'xor': fun((args, loc) => {
       assertLengthExact('xor', 2, loc, args);
 
       const [left, right] = args;
@@ -343,7 +354,7 @@ function initArrayLib() {
 
       return toArray(doFlatMap());
     }),
-    'filter': fun((args, loc) => {
+    filter: fun((args, loc) => {
       assertLengthExact('Array.filter', 2, loc, args);
 
       const [arr, func] = args;
@@ -353,7 +364,7 @@ function initArrayLib() {
 
       return toArray(arr).filter(func);
     }),
-    'fold': fun((args, loc) => {
+    fold: fun((args, loc) => {
       assertLengthExact('Array.fold', 3, loc, args);
 
       const [arr, init, func] = args;
@@ -369,7 +380,7 @@ function initArrayLib() {
 
       return prev;
     }),
-    'head': fun((args, loc) => {
+    head: fun((args, loc) => {
       assertLengthExact('Array.head', 1, loc, args);
 
       const arr = args[0];
@@ -378,7 +389,7 @@ function initArrayLib() {
 
       return arr[Symbol.iterator]().next();
     }),
-    'tail': fun((args, loc) => {
+    tail: fun((args, loc) => {
       assertLengthExact('Array.tail', 1, loc, args);
 
       const arr = args[0];
@@ -391,7 +402,7 @@ function initArrayLib() {
 
       return Array.from({[Symbol.iterator]: () => iter });
     }),
-    'init': fun((args, loc) => {
+    init: fun((args, loc) => {
       assertLengthExact('Array.init', 1, loc, args);
 
       const arr = args[0];
@@ -402,7 +413,7 @@ function initArrayLib() {
       result.pop();
       return result;
     }),
-    'last': fun((args, loc) => {
+    last: fun((args, loc) => {
       assertLengthExact('Array.last', 1, loc, args);
 
       const arr = args[0];
@@ -417,7 +428,7 @@ function initArrayLib() {
 
       return last;
     }),
-    'take': fun((args, loc) => {
+    take: fun((args, loc) => {
       assertLengthExact('Array.take', 2, loc, args);
 
       const [arr, size] = args;
@@ -438,7 +449,7 @@ function initArrayLib() {
 
       return result;
     }),
-    'drop': fun((args, loc) => {
+    drop: fun((args, loc) => {
       assertLengthExact('Array.drop', 2, loc, args);
 
       const [arr, size] = args;

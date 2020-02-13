@@ -1,117 +1,88 @@
 import { Shell } from "./shell";
 import util from 'util';
-// @ts-ignore
-import Vorpal from 'vorpal';
 import { Interpreter } from "./interpreter";
 import { initModuleLib } from "./lib";
-
+import { createInterface, Interface } from 'readline';
 
 export class Context {
 
-  private readonly vorpal = new Vorpal();
+  private readonly prompt: Interface;
 
   constructor(private coreLib: Scope, private shell: Shell) {
+    this.prompt = createInterface(process.stdin, process.stdout);
   }
 
-  execute(command: string, args: string[]): string {
-    return this.shell.execute(command, args, this.coreLib.cwd, s => this.vorpal.log(s));
+  execute(command: string, args: string[]): Promise<string> {
+    return this.shell.execute(command, args, this.coreLib.cwd);
   }
 
-  repl() {
+  async repl() {
     const context = this;
     const interpreter = new Interpreter(this);
     let replScope = initModuleLib(this.coreLib);
+    let resultScope = childScope(replScope);
     let resultIndex = 0;
 
-    const vorpal = this.vorpal;
+    function initReplScope() {
+      replScope.exit = () => process.exit(0);
 
-    Object.defineProperty(replScope, 'exit', {
-      writable: false,
-      configurable: false,
-      enumerable: false,
-      value(){
-        process.exit(0);
-      }
-    });
-
-    Object.defineProperty(replScope, 'clearResults', {
-      writable: false,
-      configurable: false,
-      enumerable: false,
-      value(){
-        const inScope = new Set(Object.getOwnPropertyNames(replScope));
-
-        for (let i = 0; i <= resultIndex; i++) {
-          const id = `result${resultIndex}`;
-
-          if (inScope.has(id)) {
-            delete replScope[id];
-          }
-        }
-
+      replScope.clearResults = () => {
+        resultScope = childScope(replScope);
         resultIndex = 0;
-      }
-    });
+      };
 
-    Object.defineProperty(replScope, 'clearDefs', {
-      writable: false,
-      configurable: false,
-      enumerable: false,
-      value(){
+      replScope.clearDefs = () => {
         replScope = initModuleLib(context.coreLib);
-
+        resultScope = childScope(replScope);
         resultIndex = 0;
-      }
-    });
+        initReplScope();
+      };
 
-    Object.defineProperty(replScope, 'listDefs', {
-      writable: false,
-      configurable: false,
-      enumerable: false,
-      value(){
-        Object.keys(replScope).filter(it => !it.startsWith('result')) .forEach(id => {
-          vorpal.log(id)
+      replScope.listDefs = () => {
+        Object.keys(resultScope).filter(it => !it.startsWith('result')).forEach(id => {
+          console.log(id)
         });
       }
-    });
+    }
 
-    vorpal
-      .mode('$')
-      .delimiter('$')
-      .init(function(this: any, args: any[], callback: () => void) {
-        this.delimiter(context.coreLib.cwd);
-        callback();
-      })
-      .action(function (this: any, command: string, callback: () => void) {
-        try {
-          const result = interpreter.eval(command, replScope);
+    initReplScope();
 
-          if (result != null && result !== '') {
-            const id = `result${resultIndex++}`;
+    const prompt = this.prompt;
 
-            replScope[id] = result;
+    function doPrompt(): Promise<void> {
+      return new Promise(resolve => {
+        console.log('');
+        console.log(resultScope.cwd);
+        prompt.question('λ ', async (line) => {
+          try {
+            const result = await interpreter.eval(line, resultScope);
 
-            if (typeof result === 'string') {
-              const extra = result.includes('\n') ? '\n' : '';
+            if (result != null && result !== '') {
+              const id = `result${resultIndex++}`;
 
-              console.log(`$${id}:`, `${extra}${result}`);
-            } else {
-              console.log(`$${id}:`, util.inspect(result, false, 3, true));
+              resultScope[id] = result;
+
+              if (typeof result === 'string') {
+                const extra = result.includes('\n') ? '\n' : '';
+
+                console.log(`$${id}:`, `${extra}${result}`);
+              } else {
+                console.log(`$${id}:`, util.inspect(result, false, 3, true));
+              }
             }
+
+          } catch (e) {
+            console.log(e.message);
           }
 
-        } catch (e) {
-          console.log(e.message);
-        }
-
-        this.delimiter(context.coreLib.cwd);
-        callback();
+          resolve();
+        });
       });
+    }
 
-    vorpal
-      .delimiter('')
-      .show()
-      .exec('$');
+    while (true) {
+      await doPrompt();
+    }
   }
 
 

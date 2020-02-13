@@ -2,18 +2,20 @@ import spawn from 'cross-spawn';
 
 export class Shell {
 
-  execute(command: string, args: string[], cwd: string, logger: (s: string) => void): string {
-    const out = spawn.sync(command, args, { cwd, encoding: "utf-8" });
+  execute(command: string, args: string[], cwd: string): Promise<string> {
+    const thread = spawn(command, args, { cwd });
 
-    if (out.error) {
-      throw out.error;
-    }
+    thread.stderr?.pipe(process.stdout);
 
-    if (out.stderr != null && out.stderr !== '') {
-      logger(out.stderr);
-    }
+    return new Promise<string>(((resolve, reject) => {
+      const out = thread.stdout!!.setEncoding('utf-8');
+      const data: string[] = [];
 
-    return out.stdout
+      out.on('data', chunk => data.push(chunk.toString()));
+      out.on('end', () => resolve(data.join('')));
+      out.on('error', err => reject(err));
+      thread.on('error', err => reject(err));
+    }));
   }
 }
 
