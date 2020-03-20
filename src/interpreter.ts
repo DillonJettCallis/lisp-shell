@@ -18,7 +18,7 @@ export class Interpreter {
   constructor(private context: Context) {
   }
 
-  eval(raw: string, scope: Scope): Promise<any> {
+  eval(raw: string, scope: Scope): any {
     const lexed = lex(raw);
     const parsed = parse(lexed);
 
@@ -27,19 +27,19 @@ export class Interpreter {
     return this.interpret(parsed, scope);
   }
 
-  async interpret(ex: Expression, scope: Scope): Promise<any> {
+  interpret(ex: Expression, scope: Scope): any {
     switch (ex.kind) {
       case "sExpression":
-        return await this.interpretSExpression(ex, scope);
+        return this.interpretSExpression(ex, scope);
       case "arrayExpression":
-        return await Promise.all(ex.body.map(it => this.interpret(it, scope)));
+        return Promise.all(ex.body.map(it => this.interpret(it, scope)));
       case "mapExpression": {
         const out = new Map<any, any>();
         const max = ex.body.length;
 
         for (let i = 0; i < max; i += 2) {
-          const key = await this.interpret(ex.body[i], scope);
-          const value = await this.interpret(ex.body[i + 1], scope);
+          const key = this.interpret(ex.body[i], scope);
+          const value = this.interpret(ex.body[i + 1], scope);
           out.set(key, value);
         }
 
@@ -53,22 +53,22 @@ export class Interpreter {
     }
   }
 
-  private async interpretSExpression(ex: SExpression, scope: Scope): Promise<any> {
+  private interpretSExpression(ex: SExpression, scope: Scope): any {
     const body = ex.body.slice(1);
 
-    const call = async (fun: Function): Promise<any> => {
+    const call = (fun: Function): any => {
       switch ((fun as any)[functionKind]) {
         case FunctionKind.Macro:
-          return await fun(body, scope, this, ex.loc);
+          return fun(body, scope, this, ex.loc);
         case FunctionKind.Lib:
-          return fun(await Promise.all(body.map(it => this.interpret(it, scope))), ex.loc);
+          return fun(body.map(it => this.interpret(it, scope)), ex.loc);
         default:
-          return fun(...await Promise.all(body.map(it => this.interpret(it, scope))));
+          return fun(...body.map(it => this.interpret(it, scope)));
       }
     };
 
-    const exec = async (fun: string): Promise<any> => {
-      const args = (await Promise.all(body.map(it => this.interpret(it, scope))))
+    const exec = (fun: string): any => {
+      const args = body.map(it => this.interpret(it, scope))
         .flatMap(it => {
           if (it instanceof Array) {
             return it;
@@ -77,7 +77,7 @@ export class Interpreter {
           }
         }).map(it => String(it));
 
-      return await this.context.execute(fun, args);
+      return this.context.execute(fun, args);
     };
 
     const first = ex.body[0];
@@ -88,20 +88,20 @@ export class Interpreter {
 
       if (typeof maybeFunc === 'function') {
         // if we find a variable and it is a function, great! Call it.
-        return await call(maybeFunc);
+        return call(maybeFunc);
       }
     }
 
     // otherwise we need to evaluate the argument to decide what to do
-    const value = await this.interpret(first, scope);
+    const value = this.interpret(first, scope);
 
     if (typeof value === 'function') {
       // if the interpreted value is a function, great! Call it.
-      return await call(value);
+      return call(value);
     } else if (typeof value === 'string') {
       // finally. it wasn't a raw unquoted string, and it wasn't an expression that returned a function
       // so it must be a command
-      return await exec(value);
+      return exec(value);
     } else {
       return ex.loc.fail('SExpression is not a function or a command')
     }

@@ -72,31 +72,31 @@ export function initCoreLib(cwd: string): Scope {
     IO: initIoLib(),
     String: initStringLib(),
     Parse: initParseLib(),
-    def: macroFun(async (args, scope, interpreter, loc) => {
+    def: macroFun((args, scope, interpreter, loc) => {
       assertLengthExact('def', 2, loc, args);
       
       const [id, valueEx] = args;
 
       assertKindVariable('def', 1, id);
       
-      scope.$module[id.name] = await interpreter.interpret(valueEx, scope);
+      scope.$module[id.name] = interpreter.interpret(valueEx, scope);
     }),
-    if: macroFun(async (args, scope, interpreter, loc) => {
+    if: macroFun((args, scope, interpreter, loc) => {
       assertLengthRange('if', 2, 3, loc, args);
 
       const [conditionEx, thenEx, elseEx] = args;
 
-      if (await interpreter.interpret(conditionEx, scope)) {
-        return await interpreter.interpret(thenEx, scope);
+      if (interpreter.interpret(conditionEx, scope)) {
+        return interpreter.interpret(thenEx, scope);
       } else {
         if (elseEx) {
-          return await interpreter.interpret(elseEx, scope);
+          return interpreter.interpret(elseEx, scope);
         } else {
           return null;
         }
       }
     }),
-    for: macroFun(async (args, scope, interpreter, loc) => {
+    for: macroFun((args, scope, interpreter, loc) => {
       assertLengthExact('for', 4, loc, args);
       
       const [id, inWord, rangeEx, body] = args;
@@ -104,7 +104,7 @@ export function initCoreLib(cwd: string): Scope {
       assertKindVariable('for', 1, id);
       assertKeyword('in', inWord);
 
-      const range = await interpreter.interpret(rangeEx, scope);
+      const range = interpreter.interpret(rangeEx, scope);
 
       assertIterable(range, rangeEx.loc);
 
@@ -113,7 +113,7 @@ export function initCoreLib(cwd: string): Scope {
       for (const next of range) {
         const innerScope = childScope(scope);
         innerScope[id.name] = next;
-        result.push(await interpreter.interpret(body, innerScope));
+        result.push(interpreter.interpret(body, innerScope));
       }
 
       return result;
@@ -147,7 +147,7 @@ export function initCoreLib(cwd: string): Scope {
 
       return coreLib.def([name, {kind: 'value', value, quoted: false, loc}], scope, interpreter, loc);
     }),
-    let: macroFun(async (args, scope, interpreter, loc) => {
+    let: macroFun((args, scope, interpreter, loc) => {
       // (let [[$x 2] [$y 3]] (+ $x $y))
       // (let [$x 2] (+ $x 1))
       assertLengthExact('let', 2, loc, args);
@@ -160,15 +160,15 @@ export function initCoreLib(cwd: string): Scope {
 
       const innerScope = childScope(scope);
 
-      await Promise.all(pairExpressions.map(async (pair) => {
+      pairExpressions.map(pair => {
         assertLengthExact('let', 2, loc, pair);
         const [key, valueEx] = pair;
         assertKindVariable('let', 2, key);
 
-        innerScope[key.name] = await interpreter.interpret(valueEx, innerScope);
-      }));
+        innerScope[key.name] = interpreter.interpret(valueEx, innerScope);
+      });
 
-      return await interpreter.interpret(body, innerScope);
+      return interpreter.interpret(body, innerScope);
     }),
     eval: fun((args, loc) => {
       assertLengthExact('eval', 1, loc, args);
@@ -231,20 +231,20 @@ export function initCoreLib(cwd: string): Scope {
 
       return !args[0];
     }),
-    'and': macroFun(async (args, scope, interpreter, loc) => {
+    'and': macroFun((args, scope, interpreter, loc) => {
       let result = true;
 
       for (const next of args) {
-        result = result && await interpreter.interpret(next, scope);
+        result = result && interpreter.interpret(next, scope);
       }
 
       return result;
     }),
-    'or': macroFun(async (args, scope, interpreter, loc) => {
+    'or': macroFun((args, scope, interpreter, loc) => {
       let result = false;
 
       for (const next of args) {
-        result = result || await interpreter.interpret(next, scope);
+        result = result || interpreter.interpret(next, scope);
       }
 
       return result;

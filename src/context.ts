@@ -12,7 +12,7 @@ export class Context {
     this.prompt = createInterface(process.stdin, process.stdout);
   }
 
-  execute(command: string, args: string[]): Promise<string> {
+  execute(command: string, args: string[]): string {
     return this.shell.execute(command, args, this.coreLib.cwd);
   }
 
@@ -55,7 +55,7 @@ export class Context {
         console.log(resultScope.cwd);
         prompt.question('λ ', async (line) => {
           try {
-            const result = await interpreter.eval(line, resultScope);
+            const result = interpreter.eval(line, resultScope);
 
             if (result != null && result !== '') {
               const id = `result${resultIndex++}`;
