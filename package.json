@@ -16,6 +16,6 @@
     "typescript": "^3.8.3"
   },
   "dependencies": {
-    "cross-spawn": "^7.0.1"
+    "cross-spawn": "^7.0.5"
   }
 }
